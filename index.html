@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>근무 가능 시간 제출</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 추가적인 스타일링 */
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        select {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+            background-repeat: no-repeat;
+            background-position: right 0.5rem center;
+            background-size: 1.5em 1.5em;
+            padding-right: 2.5rem;
+        }
+        .status-empty { background-color: #F9FAFB; } /* 빈 시간 */
+        .status-available { background-color: #D1FAE5; color: #065F46; } /* 근무 가능 */
+        .status-hope { background-color: #DBEAFE; color: #1E40AF; } /* 근무 희망 */
+        .status-class { background-color: #FEE2E2; color: #991B1B; } /* 수업 */
+        .status-meal { background-color: #FEF3C7; color: #92400E; } /* 식사 */
+    </style>
+</head>
+<body class="bg-gray-50 flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-7xl bg-white p-6 md:p-8 rounded-xl shadow-lg">
+        <div class="mb-6 text-center">
+            <h1 class="text-2xl md:text-3xl font-bold text-gray-800">주간 근무 가능 시간 제출</h1>
+            <p class="text-gray-500 mt-2">각 시간대를 클릭하여 상태를 선택해주세요.</p>
+        </div>
+
+        <div class="mb-6 flex flex-col sm:flex-row gap-4">
+            <input type="text" id="studentId" class="flex-grow w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="학번을 입력하세요 (예: 20241234)">
+            <button id="submitBtn" class="w-full sm:w-auto bg-blue-600 text-white font-bold px-6 py-2 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition-colors duration-300">
+                제출하기
+            </button>
+        </div>
+
+        <!-- 시간표 테이블 -->
+        <div class="overflow-x-auto">
+            <table class="w-full border-collapse text-center">
+                <thead>
+                    <tr class="bg-gray-100">
+                        <th class="p-2 border w-32">시간</th>
+                        <th class="p-2 border">월요일</th>
+                        <th class="p-2 border">화요일</th>
+                        <th class="p-2 border">수요일</th>
+                        <th class="p-2 border">목요일</th>
+                        <th class="p-2 border">금요일</th>
+                        <th class="p-2 border text-blue-600">토요일</th>
+                        <th class="p-2 border text-red-600">일요일</th>
+                    </tr>
+                </thead>
+                <tbody id="schedule-body">
+                    <!-- 자바스크립트로 시간대 행 생성 -->
+                </tbody>
+            </table>
+        </div>
+        
+        <!-- 제출 결과 확인용 -->
+        <div id="result-container" class="mt-8 hidden">
+            <h2 class="text-xl font-bold text-gray-700">제출 데이터 (JSON)</h2>
+            <p class="text-sm text-gray-500 mb-2">이 데이터를 Python 백엔드로 전송하여 처리합니다.</p>
+            <pre id="output" class="bg-gray-900 text-white text-sm p-4 rounded-lg overflow-x-auto"></pre>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const scheduleBody = document.getElementById('schedule-body');
+            const submitBtn = document.getElementById('submitBtn');
+            const studentIdInput = document.getElementById('studentId');
+            const resultContainer = document.getElementById('result-container');
+            const outputEl = document.getElementById('output');
+
+            // 근무 시간대 (08:00 ~ 22:00, 30분 단위)
+            const timeSlots = [];
+            for (let hour = 8; hour < 22; hour++) {
+                timeSlots.push(`${String(hour).padStart(2, '0')}:00`);
+                timeSlots.push(`${String(hour).padStart(2, '0')}:30`);
+            }
+            const days = ['월', '화', '수', '목', '금', '토', '일'];
+            const statuses = {
+                'empty': '빈 시간',
+                'available': '근무 가능',
+                'hope': '근무 희망',
+                'class': '수업',
+                'meal': '식사'
+            };
+            const statusClasses = {
+                'empty': 'status-empty',
+                'available': 'status-available',
+                'hope': 'status-hope',
+                'class': 'status-class',
+                'meal': 'status-meal'
+            };
+
+            // 시간표 그리드 생성
+            timeSlots.forEach(time => {
+                const row = document.createElement('tr');
+                
+                // 시간 컬럼
+                const timeCell = document.createElement('td');
+                timeCell.className = 'p-2 border font-mono text-xs';
+                const nextTime = getNextTime(time);
+                timeCell.textContent = `${time} ~ ${nextTime}`;
+                row.appendChild(timeCell);
+
+                // 요일별 상태 선택 컬럼
+                days.forEach((day, dayIndex) => {
+                    const cell = document.createElement('td');
+                    cell.className = 'border p-0';
+                    const select = document.createElement('select');
+                    select.className = 'w-full h-full p-2 text-center border-0 focus:outline-none transition-colors duration-200 cursor-pointer status-empty';
+                    select.dataset.day = dayIndex + 1; // 월:1, 화:2, ...
+                    select.dataset.time = time;
+
+                    for (const [value, text] of Object.entries(statuses)) {
+                        const option = document.createElement('option');
+                        option.value = value;
+                        option.textContent = text;
+                        select.appendChild(option);
+                    }
+                    
+                    // 선택 시 배경색 변경
+                    select.addEventListener('change', (e) => {
+                        select.className = select.className.replace(/status-\w+/g, '');
+                        select.classList.add(statusClasses[e.target.value]);
+                    });
+
+                    cell.appendChild(select);
+                    row.appendChild(cell);
+                });
+                scheduleBody.appendChild(row);
+            });
+
+            // 제출 버튼 클릭 이벤트
+            submitBtn.addEventListener('click', function () {
+                const studentId = studentIdInput.value.trim();
+                if (!studentId) {
+                    alert('학번을 입력해주세요.');
+                    studentIdInput.focus();
+                    return;
+                }
+
+                const allSelects = document.querySelectorAll('#schedule-body select');
+                const studentSchedule = {
+                    studentId: studentId,
+                    availability: [], // 근무 가능/희망 시간
+                    classSchedule: [] // 수업 시간
+                };
+
+                allSelects.forEach(select => {
+                    const status = select.value;
+                    if (status === 'empty') return; // 빈 시간은 수집하지 않음
+
+                    const scheduleItem = {
+                        day: parseInt(select.dataset.day),
+                        time: select.dataset.time
+                    };
+
+                    if (status === 'available' || status === 'hope') {
+                        studentSchedule.availability.push({
+                            ...scheduleItem,
+                            type: status // 'available' 또는 'hope'
+                        });
+                    } else if (status === 'class') {
+                        studentSchedule.classSchedule.push(scheduleItem);
+                    }
+                    // 'meal' 등 다른 상태도 필요하면 여기에 추가 가능
+                });
+                
+                // 결과를 화면에 표시
+                outputEl.textContent = JSON.stringify(studentSchedule, null, 2);
+                resultContainer.classList.remove('hidden');
+                
+                // 실제 애플리케이션에서는 이 데이터를 서버로 전송합니다.
+                // 예: sendToServer(studentSchedule);
+            });
+            
+            function getNextTime(time) {
+                const [hour, minute] = time.split(':').map(Number);
+                if (minute === 30) {
+                    return `${String(hour + 1).padStart(2, '0')}:00`;
+                } else {
+                    return `${String(hour).padStart(2, '0')}:30`;
+                }
+            }
+            
+            // 서버 전송 예시 함수
+            async function sendToServer(data) {
+                try {
+                    const response = await fetch('/api/submit-schedule', { // 실제 백엔드 API 주소
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(data),
+                    });
+                    if (response.ok) {
+                        alert('성공적으로 제출되었습니다!');
+                    } else {
+                        alert('제출에 실패했습니다. 다시 시도해주세요.');
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    alert('서버와 통신 중 오류가 발생했습니다.');
+                }
+            }
+        });
+    </script>
+</body>
+</html>
