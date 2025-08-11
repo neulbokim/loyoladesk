@@ -196,7 +196,7 @@
             // 서버 전송 예시 함수
             async function sendToServer(data) {
                 try {
-                    const response = await fetch('/api/submit-schedule', { // 실제 백엔드 API 주소
+                    const response = await fetch('http://127.0.0.1:5000/api/submit-schedule', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
