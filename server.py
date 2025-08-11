@@ -109,4 +109,4 @@ def submit_schedule():
 if __name__ == '__main__':
     init_db() # 서버 시작 시 데이터베이스 초기화
     # host='0.0.0.0'은 내 컴퓨터의 어떤 주소로든 접속을 허용한다는 의미입니다.
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5001, debug=True)
